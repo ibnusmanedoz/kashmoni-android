@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <title>Kash Moni AI</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img src="icon.png" alt="">
+      <div>
+        <div class="name">Kash Moni AI</div>
+        <div class="sub" id="status-line">Ready</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button class="icon" id="btn-browser" title="Built-in browser">🌐</button>
+      <button class="icon" id="btn-new" title="New chat">＋</button>
+      <button class="icon" id="btn-history" title="Chat history">☰</button>
+      <button class="icon" id="btn-settings" title="Settings">⚙</button>
+    </div>
+  </header>
+
+  <main id="messages" class="messages"></main>
+
+  <div id="confirm-bar" class="confirm hidden">
+    <div id="confirm-text"></div>
+    <div class="confirm-actions">
+      <button id="confirm-no" class="btn ghost">Deny</button>
+      <button id="confirm-yes" class="btn primary">Allow</button>
+    </div>
+  </div>
+
+  <footer class="composer">
+    <div class="chips">
+      <button id="chip-model" class="chip" title="Model for this chat"></button>
+      <label class="chip toggle" title="Use your strong model for this message (for big or hard jobs)">
+        <input type="checkbox" id="strong"> ⚡ Strong
+      </label>
+      <span class="chip ghost" id="chip-helper" title="Workspace helper status">● Workspace</span>
+      <span class="chip ghost" id="chip-cost" title="Cost of this chat"></span>
+    </div>
+    <div class="input-row">
+      <textarea id="input" rows="1" placeholder="Ask, or say what to build…" enterkeyhint="send"></textarea>
+      <button id="btn-send" class="send" title="Send (Enter)">➤</button>
+    </div>
+  </footer>
+
+  <!-- History -->
+  <section id="view-history" class="overlay hidden">
+    <div class="overlay-head"><h2>Chats</h2><button class="icon" data-close>✕</button></div>
+    <input id="history-search" class="field" placeholder="Search chats…">
+    <div id="history-list" class="history-list"></div>
+  </section>
+
+  <!-- Settings -->
+  <section id="view-settings" class="overlay hidden">
+    <div class="overlay-head"><h2>Settings</h2><button class="icon" data-close>✕</button></div>
+    <div class="form">
+      <h3>OpenRouter</h3>
+      <label>API key<input id="s-apiKey" class="field" type="password" placeholder="sk-or-v1-…" autocomplete="off"></label>
+      <label>Main model<input id="s-model" class="field" list="model-list" placeholder="deepseek/deepseek-v4.1-flash"></label>
+      <label>Strong model (⚡ button)<input id="s-strongModel" class="field" list="model-list" placeholder="pick a stronger model for big jobs"></label>
+      <datalist id="model-list"></datalist>
+      <div class="row">
+        <button class="btn ghost" id="s-load-models">Load model list</button>
+        <button class="btn ghost" id="s-test-key">Test key & balance</button>
+      </div>
+      <div class="hint" id="s-key-result"></div>
+      <label>Thinking effort
+        <select id="s-reasoning" class="field">
+          <option value="default">Model default</option>
+          <option value="low">Low (faster, cheaper)</option>
+          <option value="medium">Medium</option>
+          <option value="high">High (smarter, slower)</option>
+        </select>
+      </label>
+
+      <h3>Workspace helper</h3>
+      <div class="hint">Phone: run the helper in Termux (address http://127.0.0.1:8765).
+PC over hotspot: start it on the PC with  --host 0.0.0.0  and use http://PC-IP:8765</div>
+      <label>Address<input id="s-helperUrl" class="field" placeholder="http://127.0.0.1:8765" inputmode="url"></label>
+      <label>Token<input id="s-helperToken" class="field" type="password" placeholder="printed when the helper starts" autocomplete="off"></label>
+      <div class="row"><button class="btn ghost" id="s-test-helper">Test helper</button></div>
+      <div class="hint" id="s-helper-result"></div>
+
+      <h3>Behaviour</h3>
+      <label>Ask before actions
+        <select id="s-confirmMode" class="field">
+          <option value="risky">Only risky ones (pay, send, delete, submit…)</option>
+          <option value="always">Every action</option>
+          <option value="never">Never ask (careful!)</option>
+        </select>
+      </label>
+      <label>Max steps per task<input id="s-maxSteps" class="field" type="number" min="5" max="200"></label>
+      <label>Custom instructions<textarea id="s-customInstructions" class="field" rows="4" placeholder="e.g. Call me Kash. Prefer Python. Explain simply."></textarea></label>
+      <div class="row">
+        <button class="btn primary" id="s-save">Save</button>
+        <button class="btn ghost danger" id="s-clear">Delete all chats</button>
+      </div>
+      <div class="hint">Your key and chats are stored only on this phone.</div>
+    </div>
+  </section>
+
+  <script src="app.bundle.js"></script>
+</body>
+</html>
