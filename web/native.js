@@ -2,7 +2,13 @@
 const pending = new Map();
 let seq = 0;
 
+const streams = new Map();
+
 window.KMNative = {
+  chunk(id, text) {
+    const fn = streams.get(id);
+    if (fn) for (const line of String(text).split("\n")) fn(line);
+  },
   done(id, json) {
     const p = pending.get(id);
     if (!p) return;
@@ -52,6 +58,27 @@ export const native = {
       json: async () => JSON.parse(r.body),
       headers: { get: (k) => h[String(k).toLowerCase()] || null },
     };
+  },
+  // Streaming request: onLine(line) for every line received. Resolves { status, text } at the end.
+  stream(url, opts = {}, onLine) {
+    const headers = {};
+    if (opts.headers) for (const [k, v] of Object.entries(opts.headers)) headers[k] = String(v);
+    const id = "s" + (++seq);
+    streams.set(id, onLine);
+    const p = new Promise((resolve, reject) => {
+      pending.set(id, (r) => {
+        streams.delete(id);
+        if (r.error) reject(new TypeError("Failed to fetch: " + r.error));
+        else resolve({ status: r.status, text: r.body || "" });
+      });
+      if (opts.signal) opts.signal.addEventListener("abort", () => {
+        try { bridge().cancel(id); } catch { /* ignore */ }
+        streams.delete(id); pending.delete(id);
+        reject(new DOMException("Stopped", "AbortError"));
+      }, { once: true });
+      bridge().httpStream(id, opts.method || "POST", String(url), JSON.stringify(headers), opts.body || "");
+    });
+    return p;
   },
   browser(action, args = {}) { return call("browser", action, JSON.stringify(args)); },
   async download(url, filename) {

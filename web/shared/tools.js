@@ -415,6 +415,13 @@ async function helper(ctx, action, body = {}) {
   return r.json();
 }
 
+// Save a chat attachment into the workspace (used by the UI when sending).
+export async function uploadToWorkspace(settings, http, name, base64) {
+  const r = await helper({ settings, http }, "upload", { name, base64 });
+  if (!r.ok) throw new Error(r.error || "upload failed");
+  return r.path;
+}
+
 // ------------------------------------------------------------------ web helpers
 export function htmlToText(html) {
   const doc = new DOMParser().parseFromString(html, "text/html");

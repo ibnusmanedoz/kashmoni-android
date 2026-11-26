@@ -1,4 +1,4 @@
-# Kash Moni AI for Android (v1.1)
+# Kash Moni AI for Android (v1.2)
 
 Kash Moni AI as a phone app. It uses the same brain and tools as the Brave extension, plus a **built-in browser** that the AI can see and control.
 
@@ -68,6 +68,16 @@ Find the PC's IP with `hostname -I` (for example 192.168.43.20). In the app, set
 
 ## Browser logins
 The built-in browser keeps your logins and cookies between restarts. You can set its home page in ⚙ Settings → **Built-in browser**. Google account sign-in sometimes refuses in-app browsers. If that happens, sign in to that site with a password or another sign-in option instead.
+
+## Attachments
+Tap **📎**:
+- **Images** (screenshots, designs, photos): the AI sees them.
+- **PDFs**: their text is read through OpenRouter's free PDF parser.
+- **Code and text files**: the content is sent to the AI.
+- **Other files** (zip, docx, xlsx…): saved to `KashMoniProjects/_uploads/` so the AI can open them with workspace tools. This needs the helper running.
+
+## Memory
+Kash Moni remembers facts between chats, like your name, preferred stack or projects. Say *"remember that…"*, or it saves useful facts on its own. It can also search your past chats when you mention something from before. You can view, add or delete memories, or turn memory off, in **⚙ Settings → Memory**.
 
 ## Connections
 ⚙ Settings → **Connections** works the same as on the PC (GitHub, Vercel, Netlify, Supabase, Cloudflare, Telegram, or a custom API).

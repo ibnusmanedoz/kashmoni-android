@@ -60,6 +60,10 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 
 /**
  * Kash Moni AI for Android.
@@ -79,6 +83,9 @@ public class MainActivity extends Activity {
 
     private final List<JSONObject> consoleLog = new ArrayList<>();
     private final List<JSONObject> netLog = new ArrayList<>();
+    private final Set<String> cancelled = ConcurrentHashMap.newKeySet();
+    private ValueCallback<Uri[]> fileCallback;
+    private static final int PICK_FILES = 42;
     private int pageProgress = 100;
     private boolean pageLoading = false;
 
@@ -153,7 +160,25 @@ public class MainActivity extends Activity {
         cs.setDomStorageEnabled(true);
         cs.setAllowFileAccess(true);
         chatView.addJavascriptInterface(new Bridge(), "KMAndroid");
-        chatView.setWebChromeClient(new WebChromeClient());
+        chatView.setWebChromeClient(new WebChromeClient() {
+            // 📎 attach button: open Android's file picker
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+                if (fileCallback != null) fileCallback.onReceiveValue(null);
+                fileCallback = callback;
+                Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType("*/*");
+                i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                try {
+                    startActivityForResult(Intent.createChooser(i, "Attach files"), PICK_FILES);
+                } catch (Exception e) {
+                    fileCallback = null;
+                    return false;
+                }
+                return true;
+            }
+        });
         chatView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -171,6 +196,24 @@ public class MainActivity extends Activity {
 
         // Share a link into the app -> opens it in the built-in browser
         handleIntent(getIntent());
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != PICK_FILES || fileCallback == null) return;
+        Uri[] result = null;
+        if (resultCode == RESULT_OK && data != null) {
+            if (data.getClipData() != null) {
+                int n = data.getClipData().getItemCount();
+                result = new Uri[n];
+                for (int i = 0; i < n; i++) result[i] = data.getClipData().getItemAt(i).getUri();
+            } else if (data.getData() != null) {
+                result = new Uri[]{data.getData()};
+            }
+        }
+        fileCallback.onReceiveValue(result);
+        fileCallback = null;
     }
 
     @Override
@@ -451,6 +494,73 @@ public class MainActivity extends Activity {
                             hdr.put(e.getKey().toLowerCase(Locale.US), e.getValue().get(0));
                     }
                     res.put("headers", hdr);
+                    done(id, res);
+                } catch (Exception e) {
+                    done(id, err(e.getClass().getSimpleName() + ": " + e.getMessage()));
+                } finally {
+                    if (c != null) c.disconnect();
+                }
+            }).start();
+        }
+
+        @JavascriptInterface
+        public void cancel(String id) { cancelled.add(id); }
+
+        /** Streaming HTTP (for live AI replies): sends lines to KMNative.chunk(id, text) as they arrive. */
+        @JavascriptInterface
+        public void httpStream(String id, String method, String url, String headersJson, String body) {
+            new Thread(() -> {
+                HttpURLConnection c = null;
+                try {
+                    c = (HttpURLConnection) new URL(url).openConnection();
+                    c.setRequestMethod(method == null || method.isEmpty() ? "POST" : method);
+                    c.setConnectTimeout(20000);
+                    c.setReadTimeout(300000);
+                    if (headersJson != null && !headersJson.isEmpty()) {
+                        JSONObject h = new JSONObject(headersJson);
+                        Iterator<String> keys = h.keys();
+                        while (keys.hasNext()) {
+                            String k = keys.next();
+                            c.setRequestProperty(k, h.getString(k));
+                        }
+                    }
+                    if (body != null && !body.isEmpty()) {
+                        c.setDoOutput(true);
+                        try (OutputStream os = c.getOutputStream()) {
+                            os.write(body.getBytes(StandardCharsets.UTF_8));
+                        }
+                    }
+                    int status = c.getResponseCode();
+                    JSONObject res = new JSONObject();
+                    res.put("status", status);
+                    if (status >= 400) {
+                        InputStream es = c.getErrorStream();
+                        res.put("body", es == null ? "" : new String(readAll(es), StandardCharsets.UTF_8));
+                        done(id, res);
+                        return;
+                    }
+                    try (BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8))) {
+                        StringBuilder batch = new StringBuilder();
+                        long last = System.currentTimeMillis();
+                        String line;
+                        while ((line = br.readLine()) != null) {
+                            if (cancelled.contains(id)) break;
+                            if (line.isEmpty()) continue;
+                            if (batch.length() > 0) batch.append('\n');
+                            batch.append(line);
+                            long now = System.currentTimeMillis();
+                            if (now - last > 50 || batch.length() > 8000) {
+                                final String text = batch.toString();
+                                callJs("window.KMNative && KMNative.chunk(" + JSONObject.quote(id) + "," + JSONObject.quote(text) + ")");
+                                batch.setLength(0);
+                                last = now;
+                            }
+                        }
+                        if (batch.length() > 0) {
+                            callJs("window.KMNative && KMNative.chunk(" + JSONObject.quote(id) + "," + JSONObject.quote(batch.toString()) + ")");
+                        }
+                    }
+                    cancelled.remove(id);
                     done(id, res);
                 } catch (Exception e) {
                     done(id, err(e.getClass().getSimpleName() + ": " + e.getMessage()));

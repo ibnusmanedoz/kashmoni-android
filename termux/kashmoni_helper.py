@@ -34,7 +34,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-VERSION = "1.0.0"
+VERSION = "1.2.0"
 CONFIG_DIR = Path.home() / ".kashmoni"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 DEFAULT_WORKSPACE = Path.home() / "KashMoniProjects"
@@ -372,10 +372,29 @@ def act_zip(d):
             "download_path": f"/download?path={rel_to_ws(out)}"}
 
 
+def act_upload(d):
+    """Save a file the user attached in the chat (base64) into workspace/_uploads/."""
+    import base64
+    name = os.path.basename(d.get("name") or "file").replace("..", "_") or "file"
+    data = base64.b64decode(d.get("base64") or "")
+    if len(data) > 50 * 1024 * 1024:
+        raise ValueError("File is larger than 50 MB")
+    up = WORKSPACE / "_uploads"
+    up.mkdir(parents=True, exist_ok=True)
+    target = up / name
+    stem, ext = os.path.splitext(name)
+    n = 1
+    while target.exists():
+        target = up / f"{stem}-{n}{ext}"
+        n += 1
+    target.write_bytes(data)
+    return {"ok": True, "path": rel_to_ws(target), "bytes": len(data)}
+
+
 ACTIONS = {
     "info": act_info, "run": act_run, "write": act_write, "edit": act_edit, "read": act_read,
     "list": act_list, "delete": act_delete, "start": act_start, "logs": act_logs,
-    "stop": act_stop, "procs": act_procs, "zip": act_zip,
+    "stop": act_stop, "procs": act_procs, "zip": act_zip, "upload": act_upload,
 }
 
 

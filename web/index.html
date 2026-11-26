@@ -42,7 +42,10 @@
       <span class="chip ghost" id="chip-helper" title="Workspace helper status">● Workspace</span>
       <span class="chip ghost" id="chip-cost" title="Cost of this chat"></span>
     </div>
+    <div id="attach-row" class="attach-row hidden"></div>
     <div class="input-row">
+      <button id="btn-attach" class="attach" title="Attach images or files" type="button">📎</button>
+      <input type="file" id="file-input" multiple hidden>
       <textarea id="input" rows="1" placeholder="Ask, or say what to build…" enterkeyhint="send"></textarea>
       <button id="btn-send" class="send" title="Send (Enter)">➤</button>
     </div>
@@ -120,6 +123,16 @@ PC over hotspot: start it on the PC with  --host 0.0.0.0  and use http://PC-IP:8
         <div class="row"><button class="btn primary" id="conn-save">Save connection</button><button class="btn ghost" id="conn-test">Test</button><button class="btn ghost" id="conn-cancel">Cancel</button></div>
         <div class="hint" id="c-result"></div>
       </div>
+      <h3>Memory</h3>
+      <label>Long-term memory
+        <select id="s-memoryOn" class="field">
+          <option value="on">On - remember things between chats</option>
+          <option value="off">Off</option>
+        </select>
+      </label>
+      <div id="mem-list"></div>
+      <div class="row"><input id="mem-new" class="field" placeholder="Add something for it to remember…" style="flex:1;margin-top:0"><button class="btn ghost" id="mem-add" type="button">Add</button></div>
+
       <h3>Behaviour</h3>
       <label>Ask before actions
         <select id="s-confirmMode" class="field">

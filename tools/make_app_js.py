@@ -12,6 +12,7 @@ s = s[:start] + '''// Kash Moni AI (Android) - app UI. GENERATED from the extens
 import { renderMarkdown, escapeHtml } from "./shared/markdown.js";
 import { runAgent, fixDangling } from "./shared/agent.js";
 import { androidToolList, androidRunTool } from "./tools-android.js";
+import { uploadToWorkspace } from "./shared/tools.js";
 import { native } from "./native.js";
 
 const PLATFORM = {
@@ -22,6 +23,7 @@ const PLATFORM = {
   toolList: androidToolList,
   runTool: androidRunTool,
   http: native.http,
+  stream: native.stream,
 };
 
 ''' + s[end:]
