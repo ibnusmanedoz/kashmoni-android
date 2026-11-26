@@ -1,5 +1,5 @@
 // Kash Moni AI - side panel UI: chats, settings, rendering.
-// Kash Moni AI (Android) - app UI. Bundled into app.bundle.js by build-web.sh
+// Kash Moni AI (Android) - app UI. GENERATED from the extension's sidepanel.js by tools/make_app_js.py
 import { renderMarkdown, escapeHtml } from "./shared/markdown.js";
 import { runAgent, fixDangling } from "./shared/agent.js";
 import { androidToolList, androidRunTool } from "./tools-android.js";
@@ -26,6 +26,8 @@ const DEFAULTS = {
   confirmMode: "risky",
   maxSteps: 40,
   customInstructions: "",
+  connections: [],
+  homeUrl: "https://www.google.com",
 };
 
 let settings = { ...DEFAULTS };
@@ -75,23 +77,79 @@ async function checkHelper() {
     helperOk = !!j.ok;
     chip.title = helperOk ? `Workspace: ${j.workspace}` : (j.error || "Helper error");
   } catch {
-    helperOk = false; chip.title = "Helper not reachable. Start kashmoni_helper.py in Termux";
+    helperOk = false; chip.title = "Helper not reachable. Start it in Termux with: kashmoni";
   }
   chip.className = "chip ghost " + (helperOk ? "on" : "off");
   chip.textContent = helperOk ? "● Workspace" : "○ Workspace off";
 }
 
 // ------------------------------------------------------------------ rendering
-function shortArgs(name, a) {
-  if (!a) return "";
-  const v = a.url || a.command || a.path || a.query || a.element || a.key || a.code || a.name || "";
-  return String(v).replace(/\s+/g, " ").slice(0, 90);
+const host = (u) => { try { return new URL(u).host || u; } catch { return String(u || "").slice(0, 40); } };
+const cut = (t, n = 40) => { t = String(t ?? "").replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
+
+// Friendly, human labels for each step (like "Reading the page").
+function stepLabel(name, a = {}) {
+  switch (name) {
+    case "read_page": return "Reading the page";
+    case "open_url": return `Opening ${host(a.url)}`;
+    case "click": return "Clicking on the page";
+    case "type_text": return `Typing "${cut(a.text, 30)}"`;
+    case "select_option": return `Choosing "${cut(a.option, 30)}"`;
+    case "press_key": return `Pressing ${a.key}`;
+    case "scroll": return "Scrolling";
+    case "screenshot": return "Taking a screenshot";
+    case "run_js": return "Running code in the page";
+    case "console_logs": return "Checking console errors";
+    case "network_log": return "Checking network requests";
+    case "get_response_body": return "Reading a server response";
+    case "reload_tab": return "Reloading the page";
+    case "go_back": return "Going back";
+    case "close_tab": return "Closing a tab";
+    case "list_tabs": return "Checking open tabs";
+    case "wait": return `Waiting ${a.seconds}s`;
+    case "show_browser": return a.show === false ? "Back to chat" : "Showing the browser";
+    case "web_search": return `Searching "${cut(a.query, 36)}"`;
+    case "fetch_url": return `Reading ${host(a.url)}`;
+    case "workspace_info": return "Checking the workspace";
+    case "run_command": return `Running ${cut(a.command, 42)}`;
+    case "write_file": return `Writing ${cut(a.path, 40)}`;
+    case "edit_file": return `Editing ${cut(a.path, 40)}`;
+    case "read_file": return `Reading ${cut(a.path, 40)}`;
+    case "list_files": return "Looking through the files";
+    case "delete_path": return `Deleting ${cut(a.path, 40)}`;
+    case "start_process": return `Starting ${a.name || "server"}`;
+    case "process_logs": return "Checking the server output";
+    case "stop_process": return "Stopping the server";
+    case "zip_project": return `Zipping ${cut(a.path, 30)}`;
+    case "call_api": return `${a.connection}: ${a.method || "GET"} ${cut(a.path, 30)}`;
+    default: return name;
+  }
 }
-const ICONS = {
-  read_page: "📄", click: "👆", type_text: "⌨️", open_url: "🌐", screenshot: "📸", run_js: "⚙️", console_logs: "🐞", network_log: "📡",
-  web_search: "🔎", fetch_url: "⬇️", run_command: "💻", write_file: "📝", edit_file: "✏️", read_file: "📖", list_files: "📁",
-  start_process: "▶️", stop_process: "⏹", process_logs: "📜", zip_project: "📦", delete_path: "🗑", list_tabs: "🗂", show_browser: "🌐",
-};
+
+function parseArgs(call) { try { return JSON.parse(call.function.arguments || "{}"); } catch { return {}; } }
+
+// Each turn's tool work is shown as ONE block: a single live line while running,
+// "Worked · N steps" when finished. Tap it to see every step and its result.
+function renderWork(group, live) {
+  const steps = group.steps;
+  if (!steps.length && !group.notes.length) return "";
+  const done = steps.filter((x) => x.result).length;
+  const errors = steps.filter((x) => x.result && /^Error:/.test(x.result.content)).length;
+  const now = steps.find((x) => !x.result);
+  let label;
+  if (live) label = now ? stepLabel(now.name, now.args) + "…" : "Thinking…";
+  else label = `Worked · ${steps.length} step${steps.length === 1 ? "" : "s"}${errors ? ` · ${errors} hit an error` : ""}`;
+  const rows = steps.map((x) => {
+    const st = !x.result ? "pending" : /^Error:/.test(x.result.content) ? "err" : "ok";
+    const body = x.name === "write_file" ? `path: ${x.args.path}\n\n${String(x.args.content || "").slice(0, 3000)}` : JSON.stringify(x.args, null, 1);
+    return `<details class="wstep ${st}" data-id="${x.id}" ${openSteps.has(x.id) ? "open" : ""}><summary><span class="mark">${st === "ok" ? "✓" : st === "err" ? "✗" : "•"}</span>${escapeHtml(stepLabel(x.name, x.args))}</summary><pre>${escapeHtml(body)}${x.result ? "\n\n── result ──\n" + escapeHtml(x.result.content) : ""}</pre></details>`;
+  }).join("");
+  const notes = group.notes.map((n) => `<div class="wnote">${renderMarkdown(n)}</div>`).join("");
+  const imgs = group.images.map((u) => `<img src="${u}" alt="screenshot">`).join("");
+  return `<details class="work ${live ? "live" : ""}" data-id="${group.id}" ${openSteps.has(group.id) ? "open" : ""}>
+    <summary>${live ? '<span class="spin"></span>' : '<span class="tick">✓</span>'}<span class="wl">${escapeHtml(label)}</span><span class="wc">${live ? `${done}/${steps.length || 1}` : "details"}</span></summary>
+    <div class="wbody">${notes}${rows}${imgs ? `<div class="wimgs">${imgs}</div>` : ""}</div></details>`;
+}
 
 function render() {
   const c = chats[current];
@@ -113,32 +171,35 @@ function render() {
   const results = {};
   c.messages.forEach((m) => { if (m.role === "tool") results[m.tool_call_id] = m; });
   let html = "";
-  for (const m of c.messages) {
+  let group = null;
+  const newGroup = () => ({ id: "", steps: [], notes: [], images: [] });
+  const flush = (live) => { if (group) html += renderWork(group, live); group = null; };
+  const msgs = c.messages;
+  for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i];
     if (m.role === "user" && !m.auto) {
+      flush(false);
       html += `<div class="msg user">${escapeHtml(typeof m.content === "string" ? m.content : m.content.map((p) => p.text || "").join(" "))}</div>`;
     } else if (m.role === "user" && m.auto) {
-      const imgs = (m.content || []).filter((p) => p.type === "image_url").map((p) => `<img src="${p.image_url.url}" alt="screenshot">`).join("");
-      html += `<details class="step"><summary><span class="dot">●</span><span class="nm">📸 screenshot sent to AI</span></summary>${imgs}</details>`;
-    } else if (m.role === "assistant") {
-      if (m.content && m.content.trim()) html += `<div class="msg ai">${renderMarkdown(m.content)}</div>`;
-      for (const call of m.tool_calls || []) {
-        const name = call.function.name;
-        let args = {};
-        try { args = JSON.parse(call.function.arguments || "{}"); } catch { /* ignore */ }
-        const r = results[call.id];
-        const pending = !r;
-        const isErr = r && /^Error:/.test(r.content);
-        const body = name === "write_file"
-          ? `path: ${args.path}\n\n${String(args.content || "").slice(0, 3000)}`
-          : JSON.stringify(args, null, 1);
-        html += `<details class="step ${pending ? "pending" : ""} ${isErr ? "err" : ""}" data-id="${call.id}" ${openSteps.has(call.id) ? "open" : ""}>
-          <summary><span class="dot">●</span><span class="nm">${ICONS[name] || "🔧"} ${escapeHtml(name)}</span><span class="ar">${escapeHtml(shortArgs(name, args))}</span></summary>
-          <pre>${escapeHtml(body)}${r ? "\n\n── result ──\n" + escapeHtml(r.content) : ""}</pre></details>`;
+      group = group || newGroup();
+      for (const p of m.content || []) if (p.type === "image_url") group.images.push(p.image_url.url);
+    } else if (m.role === "assistant" && m.tool_calls && m.tool_calls.length) {
+      group = group || newGroup();
+      if (m.content && m.content.trim()) group.notes.push(m.content);
+      for (const call of m.tool_calls) {
+        if (!group.id) group.id = "w-" + call.id;
+        group.steps.push({ id: call.id, name: call.function.name, args: parseArgs(call), result: results[call.id] });
       }
+    } else if (m.role === "assistant") {
+      flush(false);
+      if (m.content && m.content.trim()) html += `<div class="msg ai">${renderMarkdown(m.content)}</div>`;
     } else if (m.role === "error") {
+      flush(false);
       html += `<div class="err-box">⚠ ${escapeHtml(m.content)}</div>`;
     }
   }
+  if (running && !group) { group = newGroup(); group.id = "w-live"; }
+  flush(!!running);
   box.innerHTML = html;
   if (nearBottom || running) box.scrollTop = box.scrollHeight;
   updateChips();
@@ -184,6 +245,7 @@ async function send(text) {
 
   const model = $("strong").checked && settings.strongModel ? settings.strongModel : settings.model;
   running = new AbortController();
+  render();
   $("btn-send").classList.add("stop"); $("btn-send").textContent = "■"; $("btn-send").title = "Stop";
   await checkHelper();
   try {
@@ -223,16 +285,19 @@ function renderHistory() {
 }
 
 // ------------------------------------------------------------------ settings
-const FIELDS = ["apiKey", "model", "strongModel", "reasoning", "helperUrl", "helperToken", "confirmMode", "maxSteps", "customInstructions"];
+const FIELDS = ["homeUrl", "apiKey", "model", "strongModel", "reasoning", "helperUrl", "helperToken", "confirmMode", "maxSteps", "customInstructions"];
 function openSettings() {
   FIELDS.forEach((f) => { $("s-" + f).value = settings[f] ?? ""; });
+  renderConnections();
+  $("conn-form").classList.add("hidden");
   $("view-settings").classList.remove("hidden");
 }
+async function saveStore() { saveAll(); }
 async function saveSettings() {
   FIELDS.forEach((f) => { settings[f] = $("s-" + f).value.trim(); });
   settings.maxSteps = Math.max(5, Math.min(200, parseInt(settings.maxSteps, 10) || 40));
   if (!settings.model) settings.model = DEFAULTS.model;
-  saveAll();
+  await saveStore();
   await checkHelper();
   updateChips();
 }
@@ -280,8 +345,82 @@ async function testHelper() {
     out.className = "hint ok"; out.textContent = `Connected. Workspace: ${j.workspace}\n${tools}`;
   } catch (e) {
     out.className = "hint bad";
-    out.textContent = /fetch/i.test(e.message) ? "Can't reach the helper. In Termux run:  kashmoni   (or python3 kashmoni_helper.py)" : "Helper error: " + e.message;
+    out.textContent = /fetch/i.test(e.message) ? "Can't reach the helper. In Termux run:  kashmoni" : "Helper error: " + e.message;
   }
+}
+
+
+// ------------------------------------------------------------------ connections
+const PRESETS = {
+  github: { name: "GitHub", baseUrl: "https://api.github.com", headerName: "Authorization", headerPrefix: "Bearer ", envVar: "GITHUB_TOKEN, GH_TOKEN", test: "/user",
+    notes: "GitHub REST API. Use for repos, issues, releases, Actions.", help: "Create a token at github.com/settings/tokens → Generate new token (classic) → tick 'repo' and 'workflow'." },
+  vercel: { name: "Vercel", baseUrl: "https://api.vercel.com", headerName: "Authorization", headerPrefix: "Bearer ", envVar: "VERCEL_TOKEN", test: "/v2/user",
+    notes: "Vercel API and CLI (vercel --token $VERCEL_TOKEN).", help: "Create a token at vercel.com/account/tokens." },
+  netlify: { name: "Netlify", baseUrl: "https://api.netlify.com/api/v1", headerName: "Authorization", headerPrefix: "Bearer ", envVar: "NETLIFY_AUTH_TOKEN", test: "/user",
+    notes: "Netlify API and CLI.", help: "Create a personal access token at app.netlify.com/user/applications." },
+  supabase: { name: "Supabase", baseUrl: "https://api.supabase.com/v1", headerName: "Authorization", headerPrefix: "Bearer ", envVar: "SUPABASE_ACCESS_TOKEN", test: "/projects",
+    notes: "Supabase management API and CLI.", help: "Create an access token at supabase.com/dashboard/account/tokens." },
+  cloudflare: { name: "Cloudflare", baseUrl: "https://api.cloudflare.com/client/v4", headerName: "Authorization", headerPrefix: "Bearer ", envVar: "CLOUDFLARE_API_TOKEN", test: "/user/tokens/verify",
+    notes: "Cloudflare API and wrangler CLI.", help: "Create an API token at dash.cloudflare.com/profile/api-tokens." },
+  telegram: { name: "Telegram bot", baseUrl: "https://api.telegram.org/bot{token}", headerName: "URL", headerPrefix: "", envVar: "TELEGRAM_BOT_TOKEN", test: "/getMe",
+    notes: "Telegram Bot API (sendMessage needs a chat_id).", help: "Talk to @BotFather on Telegram → /newbot → copy the token." },
+  custom: { name: "", baseUrl: "", headerName: "Authorization", headerPrefix: "Bearer ", envVar: "", test: "", notes: "", help: "Any REST API that uses a token. Check its docs for the header name." },
+};
+const CFIELDS = ["name", "baseUrl", "token", "headerName", "headerPrefix", "envVar", "notes"];
+let editing = -1; // index being edited, -2 = new
+
+function renderConnections() {
+  const list = settings.connections || [];
+  $("conn-list").innerHTML = list.length ? list.map((c, i) => `
+    <div class="conn"><div class="t"><div>${escapeHtml(c.name)}</div><div>${escapeHtml(c.baseUrl || "")}</div></div>
+      <button data-cedit="${i}" title="Edit">✏️</button><button data-cdel="${i}" title="Remove">🗑</button></div>`).join("")
+    : '<div class="hint">No connections yet.</div>';
+}
+function openConnForm(c, idx) {
+  editing = idx;
+  CFIELDS.forEach((f) => { $("c-" + f).value = c[f] ?? ""; });
+  $("c-help").textContent = c.help || "";
+  $("c-result").textContent = "";
+  $("conn-form").dataset.test = c.test || "";
+  $("conn-form").classList.remove("hidden");
+}
+function readConnForm() {
+  const c = {};
+  CFIELDS.forEach((f) => { c[f] = $("c-" + f).value.trim(); });
+  c.headerPrefix = $("c-headerPrefix").value; // keep trailing space
+  c.test = $("conn-form").dataset.test || "";
+  return c;
+}
+async function persistSettings() { await saveStore(); }
+function wireConnections() {
+  $("conn-add").onclick = () => { const p = PRESETS[$("conn-preset").value]; openConnForm({ ...p }, -2); };
+  $("conn-cancel").onclick = () => { $("conn-form").classList.add("hidden"); editing = -1; };
+  $("conn-save").onclick = async () => {
+    const c = readConnForm();
+    if (!c.name || !c.token) { $("c-result").className = "hint bad"; $("c-result").textContent = "Name and token are required."; return; }
+    settings.connections = settings.connections || [];
+    if (editing >= 0) settings.connections[editing] = c; else settings.connections.push(c);
+    await persistSettings();
+    $("conn-form").classList.add("hidden"); editing = -1;
+    renderConnections();
+  };
+  $("conn-test").onclick = async () => {
+    const c = readConnForm();
+    const out = $("c-result");
+    out.className = "hint"; out.textContent = "Testing…";
+    try {
+      const r = await PLATFORM.runTool("call_api", { connection: c.name || "x", method: "GET", path: c.test || "/" },
+        { settings: { connections: [{ ...c, name: c.name || "x" }], confirmMode: "never" }, http: PLATFORM.http, confirm: async () => true });
+      const ok = /^HTTP 2\d\d/.test(r);
+      out.className = "hint " + (ok ? "ok" : "bad");
+      out.textContent = (ok ? "Works! " : "Problem: ") + r.slice(0, 300);
+    } catch (e) { out.className = "hint bad"; out.textContent = "Failed: " + e.message; }
+  };
+  $("conn-list").onclick = async (e) => {
+    const ed = e.target.closest("[data-cedit]"), del = e.target.closest("[data-cdel]");
+    if (ed) { const c = settings.connections[+ed.dataset.cedit]; const p = Object.values(PRESETS).find((x) => x.name === c.name) || {}; openConnForm({ help: p.help, ...c }, +ed.dataset.cedit); }
+    if (del) { settings.connections.splice(+del.dataset.cdel, 1); await persistSettings(); renderConnections(); }
+  };
 }
 
 // ------------------------------------------------------------------ input
@@ -316,6 +455,7 @@ window.KMApp = {
 
 function wire() {
   $("btn-browser").onclick = () => native.showBrowser();
+  wireConnections();
   $("input").addEventListener("input", autosize);
   $("input").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send($("input").value); }
@@ -372,5 +512,6 @@ function wire() {
   wire();
   render();
   checkHelper();
+  if (settings.homeUrl) native.browser("open", { url: settings.homeUrl }).catch(() => {});
   setInterval(() => { if (!running) checkHelper(); }, 20000);
 })();

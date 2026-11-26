@@ -93,6 +93,40 @@ export const WORKSPACE_TOOLS = [
   }, ["path"]),
 ];
 
+export const CONNECTION_TOOLS = [
+  fn("call_api", "Call the API of one of the user's connected services (GitHub, Vercel, Supabase...). The app adds the saved login token automatically - never ask for or print tokens. Path is relative to the connection's base URL, e.g. \"/user/repos\".", {
+    connection: { type: "string", description: "Connection name from the list in your instructions." },
+    method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+    path: { type: "string" },
+    body: { type: "object", description: "JSON body for POST/PUT/PATCH." },
+    query: { type: "object", description: "Query parameters." },
+  }, ["connection", "method", "path"]),
+];
+
+// Connections the user saved in Settings: [{ name, baseUrl, headerName, headerPrefix, token, envVar, notes }]
+export function connectionList(settings) {
+  return (settings.connections || []).filter((c) => c && c.name && c.token);
+}
+function envNames(c) { return String(c.envVar || "").split(/[,\s]+/).filter((x) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(x)); }
+export function connectionEnv(settings) {
+  const env = {};
+  for (const c of connectionList(settings)) for (const n of envNames(c)) env[n] = c.token;
+  return env;
+}
+// Hide saved tokens if they ever show up in tool output.
+export function redact(settings, text) {
+  let t = typeof text === "string" ? text : JSON.stringify(text);
+  for (const c of connectionList(settings)) if (c.token && c.token.length > 6) t = t.split(c.token).join("[token]");
+  return t;
+}
+export function connectionsPrompt(settings) {
+  const list = connectionList(settings);
+  if (!list.length) return "";
+  return "\n## Connected services (use call_api; tokens are added for you)\n" + list.map((c) =>
+    `- ${c.name}: ${c.baseUrl || "(no base URL)"}${envNames(c).length ? ` - also available to workspace commands as ${envNames(c).map((n) => "$" + n).join(", ")}` : ""}${c.notes ? ` - ${c.notes}` : ""}`).join("\n") +
+    "\nFor git over HTTPS with GitHub use: git push https://x-access-token:$GITHUB_TOKEN@github.com/OWNER/REPO.git (never echo the token).";
+}
+
 // ------------------------------------------------------------------ risk checks
 export const RISKY_WORDS = /\b(buy|pay|payment|purchase|checkout|check out|place order|order now|subscribe|delete|remove|send|submit|confirm|transfer|withdraw|publish|post|tweet|sign up|register|unsubscribe|deactivate|close account|cancel (my )?(account|subscription|order)|donate|book now|reserve)\b/i;
 export const RISKY_CMD = /(\brm\s+-[a-z]*[rf]|\bsudo\b|\bmkfs|\bdd\s+if=|\bshutdown\b|\breboot\b|\bgit\s+push\b|\bnpm\s+publish\b|\bchmod\s+-R\b|\bchown\b|>\s*\/dev\/|\bcurl\b[^|]*\|\s*(ba)?sh|\bwget\b[^|]*\|\s*(ba)?sh|:\(\)\s*\{)/i;
@@ -579,7 +613,7 @@ export async function runTool(name, args, ctx) {
     case "run_command": {
       if (!always) await ask(`Kash Moni wants to run:\n\n\`\`\`\n${args.command}\n\`\`\``, RISKY_CMD.test(args.command));
       ctx.log && ctx.log(`$ ${args.command}`);
-      return clip(await helper(ctx, "run", { command: args.command, cwd: args.cwd || "", timeout: args.timeout || 120 }));
+      return redact(ctx.settings, clip(await helper(ctx, "run", { command: args.command, cwd: args.cwd || "", timeout: args.timeout || 120, env: connectionEnv(ctx.settings) })));
     }
     case "write_file": return clip(await helper(ctx, "write", { path: args.path, content: args.content ?? "" }));
     case "edit_file": return clip(await helper(ctx, "edit", args));
@@ -591,9 +625,9 @@ export async function runTool(name, args, ctx) {
     }
     case "start_process": {
       if (!always) await ask(`Kash Moni wants to start:\n\n\`\`\`\n${args.command}\n\`\`\``, RISKY_CMD.test(args.command));
-      return clip(await helper(ctx, "start", args));
+      return redact(ctx.settings, clip(await helper(ctx, "start", { ...args, env: connectionEnv(ctx.settings) })));
     }
-    case "process_logs": return clip(await helper(ctx, "logs", args));
+    case "process_logs": return redact(ctx.settings, clip(await helper(ctx, "logs", args)));
     case "stop_process": return clip(await helper(ctx, "stop", args));
     case "zip_project": {
       const r = await helper(ctx, "zip", { path: args.path });
@@ -606,6 +640,28 @@ export async function runTool(name, args, ctx) {
           : await chrome.downloads.download({ url, filename, saveAs: false, conflictAction: "uniquify" });
       } catch (e) { /* ignore */ }
       return `Zipped ${r.files} files (${Math.round(r.bytes / 1024)} KB). ${id ? `Downloaded to the user's Downloads/${filename}.` : `Download failed; the zip is at workspace/${r.zip}.`}`;
+    }
+    // ---------------- connections
+    case "call_api": {
+      const c = connectionList(ctx.settings).find((x) => x.name.toLowerCase() === String(args.connection || "").toLowerCase());
+      if (!c) throw new Error(`No connection named "${args.connection}". Connected: ${connectionList(ctx.settings).map((x) => x.name).join(", ") || "none"}`);
+      const method = String(args.method || "GET").toUpperCase();
+      if (method === "DELETE" && !always) await ask(`Kash Moni wants to **DELETE** \`${args.path}\` on ${c.name}. Allow?`, true);
+      let url = /^https?:\/\//.test(args.path) ? args.path : (c.baseUrl || "").replace(/\/$/, "") + "/" + String(args.path || "").replace(/^\//, "");
+      if (!url.startsWith((c.baseUrl || "").replace(/\/$/, ""))) throw new Error("Full URLs must start with the connection's base URL.");
+      if (args.query && typeof args.query === "object") {
+        const u = new URL(url);
+        for (const [k, v] of Object.entries(args.query)) u.searchParams.set(k, String(v));
+        url = u.toString();
+      }
+      const headers = { Accept: "application/json", "User-Agent": "KashMoniAI" };
+      if (c.headerName === "URL") url = url.replace("{token}", encodeURIComponent(c.token));
+      else headers[c.headerName || "Authorization"] = (c.headerPrefix ?? "Bearer ") + c.token;
+      let body;
+      if (args.body && method !== "GET") { headers["Content-Type"] = "application/json"; body = JSON.stringify(args.body); }
+      const r = await (ctx.http || fetch)(url, { method, headers, body, signal: ctx.signal });
+      const text = redact(ctx.settings, await r.text());
+      return `HTTP ${r.status}\n${clip(text, 12000)}`;
     }
     default:
       throw new Error(`Unknown tool ${name}`);

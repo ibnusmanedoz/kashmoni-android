@@ -78,6 +78,10 @@
         </select>
       </label>
 
+      <h3>Built-in browser</h3>
+      <label>Home page<input id="s-homeUrl" class="field" inputmode="url" placeholder="https://www.google.com"></label>
+      <div class="hint">Logins and cookies are kept between app restarts.</div>
+
       <h3>Workspace helper</h3>
       <div class="hint">Phone: run the helper in Termux (address http://127.0.0.1:8765).
 PC over hotspot: start it on the PC with  --host 0.0.0.0  and use http://PC-IP:8765</div>
@@ -86,12 +90,42 @@ PC over hotspot: start it on the PC with  --host 0.0.0.0  and use http://PC-IP:8
       <div class="row"><button class="btn ghost" id="s-test-helper">Test helper</button></div>
       <div class="hint" id="s-helper-result"></div>
 
+
+      <h3>Connections</h3>
+      <div class="hint">Link services with an API token. Kash Moni can then use them (e.g. create GitHub repos, push code, deploy). Tokens stay on this device and are never shown to the AI.</div>
+      <div id="conn-list"></div>
+      <div class="row">
+        <select id="conn-preset" class="field" style="flex:1;margin-top:0">
+          <option value="github">GitHub</option>
+          <option value="vercel">Vercel</option>
+          <option value="netlify">Netlify</option>
+          <option value="supabase">Supabase</option>
+          <option value="cloudflare">Cloudflare</option>
+          <option value="telegram">Telegram bot</option>
+          <option value="custom">Other (custom API)</option>
+        </select>
+        <button class="btn ghost" id="conn-add">Add</button>
+      </div>
+      <div id="conn-form" class="conn-form hidden">
+        <label>Name<input id="c-name" class="field"></label>
+        <label>API base URL<input id="c-baseUrl" class="field" placeholder="https://api.example.com"></label>
+        <label>Token<input id="c-token" class="field" type="password" autocomplete="off"></label>
+        <div class="hint" id="c-help"></div>
+        <details><summary class="hint" style="cursor:pointer">Advanced</summary>
+          <label>Auth header (or URL if the token goes in the URL as {token})<input id="c-headerName" class="field" placeholder="Authorization"></label>
+          <label>Header prefix<input id="c-headerPrefix" class="field" placeholder="Bearer "></label>
+          <label>Also give workspace commands this env var (comma-separated)<input id="c-envVar" class="field" placeholder="GITHUB_TOKEN"></label>
+          <label>Notes for the AI<input id="c-notes" class="field"></label>
+        </details>
+        <div class="row"><button class="btn primary" id="conn-save">Save connection</button><button class="btn ghost" id="conn-test">Test</button><button class="btn ghost" id="conn-cancel">Cancel</button></div>
+        <div class="hint" id="c-result"></div>
+      </div>
       <h3>Behaviour</h3>
       <label>Ask before actions
         <select id="s-confirmMode" class="field">
+          <option value="never">Never ask - full permission</option>
           <option value="risky">Only risky ones (pay, send, delete, submit…)</option>
           <option value="always">Every action</option>
-          <option value="never">Never ask (careful!)</option>
         </select>
       </label>
       <label>Max steps per task<input id="s-maxSteps" class="field" type="number" min="5" max="200"></label>

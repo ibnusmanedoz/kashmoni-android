@@ -167,10 +167,16 @@ public class MainActivity extends Activity {
 
         setContentView(root);
         chatView.loadUrl("file:///android_asset/app/index.html");
-        browserView.loadUrl("https://duckduckgo.com/");
+        browserView.loadUrl("about:blank"); // the app opens your home page from Settings
 
         // Share a link into the app -> opens it in the built-in browser
         handleIntent(getIntent());
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        CookieManager.getInstance().flush(); // save logins right away
     }
 
     @Override
@@ -206,6 +212,8 @@ public class MainActivity extends Activity {
         s.setDisplayZoomControls(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         s.setMediaPlaybackRequiresUserGesture(true);
+        // Look like normal Chrome (helps some sites that refuse "in-app" browsers)
+        s.setUserAgentString(s.getUserAgentString().replace("; wv", ""));
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(browserView, true);
         WebView.setWebContentsDebuggingEnabled(true);

@@ -111,8 +111,12 @@ def find_shell():
 SHELL = find_shell()
 
 
-def shell_env():
+def shell_env(extra=None):
     env = os.environ.copy()
+    if isinstance(extra, dict):
+        for k, v in extra.items():
+            if isinstance(k, str) and k.replace("_", "").isalnum() and v is not None:
+                env[k] = str(v)
     env.setdefault("CI", "1")              # makes npm/create-* tools less interactive
     env.setdefault("npm_config_yes", "true")
     env["PYTHONUNBUFFERED"] = "1"
@@ -142,7 +146,7 @@ def act_run(d):
     start = time.time()
     proc = subprocess.Popen(cmd, shell=True, cwd=str(cwd), stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True, errors="replace",
-                            env=shell_env(), stdin=subprocess.DEVNULL, start_new_session=True,
+                            env=shell_env(d.get("env")), stdin=subprocess.DEVNULL, start_new_session=True,
                             executable=SHELL)
     try:
         out, err = proc.communicate(timeout=timeout)
@@ -301,7 +305,7 @@ def act_start(d):
     log = logdir / f"{name}.log"
     lf = open(log, "w", encoding="utf-8")
     proc = subprocess.Popen(cmd, shell=True, cwd=str(cwd), stdout=lf, stderr=subprocess.STDOUT,
-                            stdin=subprocess.DEVNULL, env=shell_env(), start_new_session=True,
+                            stdin=subprocess.DEVNULL, env=shell_env(d.get("env")), start_new_session=True,
                             executable=SHELL)
     with PROCS_LOCK:
         PROCS[name] = {"proc": proc, "log": log, "cmd": cmd, "cwd": rel_to_ws(cwd), "started": time.time()}

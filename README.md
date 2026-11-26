@@ -1,4 +1,4 @@
-# Kash Moni AI for Android (v1.0)
+# Kash Moni AI for Android (v1.1)
 
 Kash Moni AI as a phone app. It uses the same brain and tools as the Brave extension, plus a **built-in browser** that the AI can see and control.
 
@@ -65,6 +65,12 @@ cd ~/Desktop/kashmoni-ai/helper && python3 kashmoni_helper.py --host 0.0.0.0
 Find the PC's IP with `hostname -I` (for example 192.168.43.20). In the app, set the Address to `http://192.168.43.20:8765` and paste the PC's token. Only do this on your own hotspot: anyone on that network who has the token can run commands on the PC.
 
 ---
+
+## Browser logins
+The built-in browser keeps your logins and cookies between restarts. You can set its home page in ⚙ Settings → **Built-in browser**. Google account sign-in sometimes refuses in-app browsers. If that happens, sign in to that site with a password or another sign-in option instead.
+
+## Connections
+⚙ Settings → **Connections** works the same as on the PC (GitHub, Vercel, Netlify, Supabase, Cloudflare, Telegram, or a custom API).
 
 ## Limits (compared with the Brave extension)
 - The AI controls the **app's built-in browser** only, not Chrome or other apps.
